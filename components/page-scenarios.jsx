@@ -12,7 +12,9 @@ function ScenariosPage({ inputs, scenarios, setScenarios }) {
     return { ...s, merged, series, fi };
   }), [scenarios, inputs]);
 
-  const fiNumber = inputs.annualExpenses * (100 / inputs.withdrawalRate);
+  const piAnnual = (inputs.passiveIncome?.enabled && inputs.passiveIncome?.annual > 0)
+    ? inputs.passiveIncome.annual : 0;
+  const fiNumber = Math.max(0, inputs.annualExpenses - piAnnual) * (100 / inputs.withdrawalRate);
   const baseline = computed[0];
 
   const editScenario = computed.find(s => s.id === editing) || computed[0];

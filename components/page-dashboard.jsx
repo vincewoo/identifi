@@ -1,13 +1,15 @@
 // Dashboard page
 const { useMemo: useMemoD } = React;
 
-function DashboardPage({ inputs }) {
+function DashboardPage({ inputs, setPage }) {
   const series = useMemoD(() => window.FIMath.project(inputs), [inputs]);
   const fi = window.FIMath.timeToFI(inputs);
   const annualSavings = inputs.annualIncome * (inputs.savingsRate / 100);
   const savingsRate = inputs.savingsRate;
-  const baseFI = inputs.annualExpenses * (100 / inputs.withdrawalRate);
   const hcBridge = window.FIMath.healthcareBridge(inputs);
+  const piAnnual = (inputs.passiveIncome?.enabled && inputs.passiveIncome?.annual > 0)
+    ? inputs.passiveIncome.annual : 0;
+  const baseFI = Math.max(0, inputs.annualExpenses - piAnnual) * (100 / inputs.withdrawalRate);
   const fiNumber = baseFI + hcBridge.total;
   const yearsLeft = fi.years;
   const fiDate = yearsLeft != null ? new Date(2026, 3, 24 + yearsLeft * 365.25) : null;
@@ -39,7 +41,7 @@ function DashboardPage({ inputs }) {
         sub="The number you're chasing, the number you have, and the gap between them — refreshed every time you change an assumption."
         actions={<>
           <button className="btn ghost">Export ↓</button>
-          <button className="btn primary">Adjust inputs</button>
+          <button className="btn primary" onClick={() => setPage("inputs")}>Adjust inputs</button>
         </>}
       />
 
@@ -69,6 +71,12 @@ function DashboardPage({ inputs }) {
             <div className="summary-row" style={{paddingLeft: 14, borderLeft: "2px solid var(--accent)", marginLeft: -16}}>
               <span className="k" style={{fontSize: 11}}>↳ healthcare bridge</span>
               <span className="v" style={{fontSize: 14, color: "var(--ink-2)"}}>+{fmt(hcBridge.total)}</span>
+            </div>
+          )}
+          {inputs.passiveIncome?.enabled && (inputs.passiveIncome?.annual ?? 0) > 0 && (
+            <div className="summary-row" style={{paddingLeft: 14, borderLeft: "2px solid var(--ink-3)", marginLeft: -16}}>
+              <span className="k" style={{fontSize: 11}}>↳ passive income</span>
+              <span className="v" style={{fontSize: 14, color: "var(--ink-2)"}}>−{fmt(inputs.passiveIncome.annual)}/yr</span>
             </div>
           )}
           <div className="summary-row">

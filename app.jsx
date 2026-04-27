@@ -40,6 +40,12 @@ const DEFAULT_INPUTS = {
     retireAge: 50,
     medicareAge: 65,
   },
+  passiveIncome: {
+    enabled: false,
+    annual: 0,           // present-day $/yr (real dollars)
+    growthRate: 0,       // % per year nominal growth
+    preRetirement: true, // if true, counts as extra contributions before FI
+  },
 };
 
 const DEFAULT_SCENARIOS = [
@@ -76,7 +82,7 @@ function App() {
   }, [tweakValues.theme, tweakValues.density, tweakValues.accentHue]);
 
   const pageMap = {
-    dashboard: <DashboardPage inputs={inputs} />,
+    dashboard: <DashboardPage inputs={inputs} setPage={setPage} />,
     scenarios: <ScenariosPage inputs={inputs} scenarios={scenarios} setScenarios={setScenarios} />,
     monte: <MonteCarloPage inputs={inputs} />,
     milestones: <MilestonesPage inputs={inputs} />,

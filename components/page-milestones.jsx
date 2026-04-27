@@ -3,7 +3,9 @@ const { useMemo: useMemoMS } = React;
 
 function MilestonesPage({ inputs }) {
   const series = useMemoMS(() => window.FIMath.project(inputs), [inputs]);
-  const fiNumber = inputs.annualExpenses * (100 / inputs.withdrawalRate);
+  const piAnnual = (inputs.passiveIncome?.enabled && inputs.passiveIncome?.annual > 0)
+    ? inputs.passiveIncome.annual : 0;
+  const fiNumber = Math.max(0, inputs.annualExpenses - piAnnual) * (100 / inputs.withdrawalRate);
   const annualSavings = inputs.annualIncome * (inputs.savingsRate / 100);
   const fmt = window.FIMath.fmtMoney;
   const fmtFull = window.FIMath.fmtMoneyFull;
