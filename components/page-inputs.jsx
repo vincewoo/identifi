@@ -32,6 +32,49 @@ function InputsPage({ inputs, setInputs }) {
           </div>
 
           <div className="card">
+            <div className="card-head">
+              <h3>Passive income</h3>
+              <span className="meta">dividends, rental, royalties</span>
+            </div>
+            <div className="grid-2" style={{gap: 20, marginBottom: 18}}>
+              <div className="toggle-row" style={{borderBottom: "none", padding: 0}}>
+                <div className="lab">Model passive income
+                  <small>Reduces FI number; optionally boosts pre-FI savings</small>
+                </div>
+                <Switch on={inputs.passiveIncome?.enabled ?? false}
+                  onChange={v => set("passiveIncome", { ...(inputs.passiveIncome || {}), enabled: v })} />
+              </div>
+              <div className="toggle-row" style={{borderBottom: "none", padding: 0}}>
+                <div className="lab">Augments pre-retirement savings
+                  <small>Add to contributions while still working</small>
+                </div>
+                <Switch on={inputs.passiveIncome?.preRetirement ?? true}
+                  onChange={v => set("passiveIncome", { ...(inputs.passiveIncome || {}), preRetirement: v })} />
+              </div>
+            </div>
+            <div className="grid-2" style={{gap: 16}}>
+              <Field label="Annual passive income"
+                value={inputs.passiveIncome?.annual ?? 0}
+                onChange={v => set("passiveIncome", { ...(inputs.passiveIncome || {}), annual: v })}
+                prefix="$" help="Dividends, rent, royalties — today's dollars" />
+              <Field label="Annual growth rate"
+                value={inputs.passiveIncome?.growthRate ?? 0}
+                onChange={v => set("passiveIncome", { ...(inputs.passiveIncome || {}), growthRate: v })}
+                suffix="%" step={0.5} help="How fast this income stream grows per year (nominal)" />
+            </div>
+            <div className="editorial" style={{marginTop: 16, fontSize: 14}}>
+              {(() => {
+                const pi = inputs.passiveIncome || {};
+                if (!pi.enabled) return "Passive income is off. If you have dividends or rental income, model it here.";
+                const piAnnual = pi.annual ?? 0;
+                if (piAnnual === 0) return "Enter an annual amount above to see the effect on your FI number.";
+                const reduction = piAnnual * (100 / inputs.withdrawalRate);
+                return `${window.FIMath.fmtMoneyFull(piAnnual)}/yr of passive income reduces your required portfolio by ${window.FIMath.fmtMoneyFull(reduction)} at a ${inputs.withdrawalRate}% withdrawal rate.`;
+              })()}
+            </div>
+          </div>
+
+          <div className="card">
             <div className="card-head"><h3>Portfolio today</h3></div>
             <div className="grid-2" style={{gap: 16}}>
               <Field label="Current net worth" value={inputs.currentNetWorth} onChange={v => set("currentNetWorth", v)} prefix="$" help="Investable assets only" />
@@ -169,49 +212,6 @@ function SettingsPage({ inputs, setInputs }) {
             if (!inputs.healthcare.enabled) return "Healthcare bridge is off. The model assumes employer coverage forever, which is a fiction.";
             if (inputs.healthcare.coveredByExpenses) return "Marked as already in your annual expenses. Carry on.";
             return `${b.years} years × ${window.FIMath.fmtMoneyFull(b.annual)} = ${window.FIMath.fmtMoneyFull(b.total)} of extra portfolio you need to retire at ${b.retireAge}. The single biggest line item people forget.`;
-          })()}
-        </div>
-      </div>
-
-      <div className="card" style={{marginTop: 20}}>
-        <div className="card-head">
-          <h3>Passive income</h3>
-          <span className="meta">dividends, rental, royalties</span>
-        </div>
-        <div className="grid-2" style={{gap: 20, marginBottom: 18}}>
-          <div className="toggle-row" style={{borderBottom: "none", padding: 0}}>
-            <div className="lab">Model passive income
-              <small>Reduces FI number; optionally boosts pre-FI savings</small>
-            </div>
-            <Switch on={inputs.passiveIncome?.enabled ?? false}
-              onChange={v => set("passiveIncome", { ...(inputs.passiveIncome || {}), enabled: v })} />
-          </div>
-          <div className="toggle-row" style={{borderBottom: "none", padding: 0}}>
-            <div className="lab">Augments pre-retirement savings
-              <small>Add to contributions while still working</small>
-            </div>
-            <Switch on={inputs.passiveIncome?.preRetirement ?? true}
-              onChange={v => set("passiveIncome", { ...(inputs.passiveIncome || {}), preRetirement: v })} />
-          </div>
-        </div>
-        <div className="grid-2" style={{gap: 16}}>
-          <Field label="Annual passive income"
-            value={inputs.passiveIncome?.annual ?? 0}
-            onChange={v => set("passiveIncome", { ...(inputs.passiveIncome || {}), annual: v })}
-            prefix="$" help="Dividends, rent, royalties — today's dollars" />
-          <Field label="Annual growth rate"
-            value={inputs.passiveIncome?.growthRate ?? 0}
-            onChange={v => set("passiveIncome", { ...(inputs.passiveIncome || {}), growthRate: v })}
-            suffix="%" step={0.5} help="How fast this income stream grows per year (nominal)" />
-        </div>
-        <div className="editorial" style={{marginTop: 16, fontSize: 14}}>
-          {(() => {
-            const pi = inputs.passiveIncome || {};
-            if (!pi.enabled) return "Passive income is off. If you have dividends or rental income, model it here.";
-            const piAnnual = pi.annual ?? 0;
-            if (piAnnual === 0) return "Enter an annual amount above to see the effect on your FI number.";
-            const reduction = piAnnual * (100 / inputs.withdrawalRate);
-            return `${window.FIMath.fmtMoneyFull(piAnnual)}/yr of passive income reduces your required portfolio by ${window.FIMath.fmtMoneyFull(reduction)} at a ${inputs.withdrawalRate}% withdrawal rate.`;
           })()}
         </div>
       </div>
