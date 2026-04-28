@@ -5,7 +5,12 @@ function MilestonesPage({ inputs }) {
   const series = useMemoMS(() => window.FIMath.project(inputs), [inputs]);
   const piAnnual = (inputs.passiveIncome?.enabled && inputs.passiveIncome?.annual > 0)
     ? inputs.passiveIncome.annual : 0;
-  const fiNumber = Math.max(0, inputs.annualExpenses - piAnnual) * (100 / inputs.withdrawalRate);
+  const liab = inputs.liabilities || {};
+  const ioAnnual = window.FIMath.interestOnlyAnnualCost(liab);
+  const realRet = window.FIMath.realReturn(inputs.annualReturn, inputs.inflation);
+  const runoffPV = window.FIMath.amortizingRunoffPV(liab, realRet);
+  const hcBridge = window.FIMath.healthcareBridge(inputs);
+  const fiNumber = Math.max(0, inputs.annualExpenses + ioAnnual - piAnnual) * (100 / inputs.withdrawalRate) + hcBridge.total + runoffPV;
   const annualSavings = inputs.annualIncome * (inputs.savingsRate / 100);
   const fmt = window.FIMath.fmtMoney;
   const fmtFull = window.FIMath.fmtMoneyFull;

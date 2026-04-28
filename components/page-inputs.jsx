@@ -75,6 +75,133 @@ function InputsPage({ inputs, setInputs }) {
           </div>
 
           <div className="card">
+            <div className="card-head">
+              <h3>Liabilities</h3>
+              <span className="meta">mortgage, student loans, margin</span>
+            </div>
+            <div className="grid-2" style={{gap: 20, marginBottom: 18}}>
+              <div className="toggle-row" style={{borderBottom: "none", padding: 0}}>
+                <div className="lab">Model liabilities
+                  <small>Payments reduce contributions; balances offset net worth if toggled per item</small>
+                </div>
+                <Switch on={inputs.liabilities?.enabled ?? false}
+                  onChange={v => set("liabilities", { ...(inputs.liabilities || {}), enabled: v })} />
+              </div>
+            </div>
+            {(inputs.liabilities?.enabled) && (
+              <>
+                {(inputs.liabilities?.items || []).map((item, idx) => {
+                  const liab = inputs.liabilities;
+                  const updateItem = (patch) => {
+                    const items = liab.items.map((it, i) => i === idx ? { ...it, ...patch } : it);
+                    set("liabilities", { ...liab, items });
+                  };
+                  const removeItem = () => {
+                    const items = liab.items.filter((_, i) => i !== idx);
+                    set("liabilities", { ...liab, items });
+                  };
+                  const { kind, balance, rate, monthlyPayment, label, includeInNetWorth } = item;
+                  const FM = window.FIMath;
+                  let derivedLine = null;
+                  if (kind === "amortizing") {
+                    const months = FM.amortizationMonths(balance ?? 0, rate ?? 0, monthlyPayment ?? 0);
+                    if (!isFinite(months) || months <= 0) {
+                      derivedLine = monthlyPayment > 0
+                        ? "Payment doesn't cover interest — underwater. Treated as interest-only."
+                        : "Enter a monthly payment above.";
+                    } else {
+                      const yrs = months / 12;
+                      const payoffAge = inputs.currentAge + yrs;
+                      derivedLine = `Paid off in ~${yrs.toFixed(1)} yrs (age ${payoffAge.toFixed(0)})`;
+                    }
+                  } else {
+                    const annual = (balance > 0 && rate > 0) ? balance * (rate / 100) : 0;
+                    derivedLine = annual > 0 ? `${FM.fmtMoneyFull(annual)}/yr interest (perpetual)` : "Enter balance and rate above.";
+                  }
+                  return (
+                    <div key={item.id} style={{borderTop: "1px solid var(--rule)", paddingTop: 16, marginBottom: 8}}>
+                      <div style={{display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12}}>
+                        <Field label="Label" value={label ?? ""} type="text"
+                          onChange={v => updateItem({ label: v })} />
+                        <button
+                          onClick={removeItem}
+                          style={{marginLeft: 12, marginTop: 18, padding: "4px 10px", fontSize: 12,
+                            border: "1px solid var(--rule)", borderRadius: 4, background: "none",
+                            color: "var(--ink-3)", cursor: "pointer", lineHeight: 1}}>
+                          ×
+                        </button>
+                      </div>
+                      <div className="grid-2" style={{gap: 16, marginBottom: 12}}>
+                        <Field label="Type" value={kind ?? "amortizing"}
+                          onChange={v => updateItem({ kind: v })}
+                          options={[{value: "amortizing", label: "Amortizing (mortgage, car, student)"}, {value: "interest_only", label: "Interest-only (margin, HELOC)"}]} />
+                        <Field label="Current balance" value={balance ?? 0}
+                          onChange={v => updateItem({ balance: v })} prefix="$" />
+                        <Field label="Annual interest rate" value={rate ?? 0}
+                          onChange={v => updateItem({ rate: v })} suffix="%" step={0.1} />
+                        {kind !== "interest_only" && (
+                          <Field label="Monthly payment" value={monthlyPayment ?? 0}
+                            onChange={v => updateItem({ monthlyPayment: v })} prefix="$" />
+                        )}
+                      </div>
+                      <div className="toggle-row" style={{borderBottom: "none", padding: 0, marginBottom: 8}}>
+                        <div className="lab">Balance is gross (offset net worth)
+                          <small>Turn on if you're tracking the underlying asset (e.g. home value) in net worth</small>
+                        </div>
+                        <Switch on={includeInNetWorth ?? false}
+                          onChange={v => updateItem({ includeInNetWorth: v })} />
+                      </div>
+                      <div style={{fontSize: 12, color: "var(--ink-2)", fontFamily: "var(--font-mono)", marginTop: 4}}>
+                        {derivedLine}
+                      </div>
+                    </div>
+                  );
+                })}
+                <button
+                  onClick={() => {
+                    const newItem = {
+                      id: String(Date.now() + Math.random()),
+                      label: "New liability",
+                      kind: "amortizing",
+                      balance: 0,
+                      rate: 0,
+                      monthlyPayment: 0,
+                      includeInNetWorth: false,
+                    };
+                    set("liabilities", {
+                      ...(inputs.liabilities || {}),
+                      items: [...(inputs.liabilities?.items || []), newItem],
+                    });
+                  }}
+                  style={{marginTop: 12, display: "flex", alignItems: "center", gap: 6,
+                    padding: "6px 12px", fontSize: 12, border: "1px solid var(--rule)",
+                    borderRadius: 4, background: "none", color: "var(--ink-2)", cursor: "pointer"}}>
+                  <Icon.add /> Add liability
+                </button>
+                {(() => {
+                  const FM = window.FIMath;
+                  const liab = inputs.liabilities;
+                  const summary = FM.liabilitySummary(liab, inputs.currentAge);
+                  if (summary.totalBalance === 0) return null;
+                  const realRet = FM.realReturn(inputs.annualReturn, inputs.inflation);
+                  const runoffPV = FM.amortizingRunoffPV(liab, realRet);
+                  const ioAnnual = FM.interestOnlyAnnualCost(liab);
+                  const fiImpact = runoffPV + ioAnnual * (100 / inputs.withdrawalRate);
+                  const hasLowRate = liab.items.some(
+                    it => it.kind === "amortizing" && (it.rate ?? 0) > 0 && (it.rate ?? 0) < inputs.annualReturn * (1 - inputs.inflation / 100)
+                  );
+                  return (
+                    <div className="editorial" style={{marginTop: 16, fontSize: 14}}>
+                      {`${FM.fmtMoneyFull(summary.totalBalance)} in liabilities adds ${FM.fmtMoneyFull(fiImpact)} to your required portfolio and ${FM.fmtMoneyFull(summary.totalAnnualPayments)}/yr in outflows.`}
+                      {hasLowRate && " Your loan rate is below the model's expected return — paying it off faster isn't free; the math prefers investing the difference."}
+                    </div>
+                  );
+                })()}
+              </>
+            )}
+          </div>
+
+          <div className="card">
             <div className="card-head"><h3>Portfolio today</h3></div>
             <div className="grid-2" style={{gap: 16}}>
               <Field label="Current net worth" value={inputs.currentNetWorth} onChange={v => set("currentNetWorth", v)} prefix="$" help="Investable assets only" />
@@ -104,12 +231,33 @@ function InputsPage({ inputs, setInputs }) {
             <Stat label="Annual savings" value={fmt(annualSavings)} sub={`${inputs.savingsRate}% of ${fmt(inputs.annualIncome)}`} />
             <div style={{borderTop: "1px solid var(--rule)", paddingTop: 12}}>
               {(() => {
+                const FM = window.FIMath;
                 const piAnnual = (inputs.passiveIncome?.enabled && inputs.passiveIncome?.annual > 0)
                   ? inputs.passiveIncome.annual : 0;
-                const fiNum = Math.max(0, inputs.annualExpenses - piAnnual) * (100 / inputs.withdrawalRate);
-                return <Stat label="FI number" value={fmt(fiNum)} sub={`${inputs.withdrawalRate}% withdrawal${piAnnual > 0 ? ` · −${fmt(piAnnual)}/yr passive` : ""}`} />;
+                const liab = inputs.liabilities || {};
+                const ioAnnual = FM.interestOnlyAnnualCost(liab);
+                const realRet = FM.realReturn(inputs.annualReturn, inputs.inflation);
+                const runoffPV = FM.amortizingRunoffPV(liab, realRet);
+                const hcBridge = FM.healthcareBridge(inputs);
+                const fiNum = Math.max(0, inputs.annualExpenses + ioAnnual - piAnnual) * (100 / inputs.withdrawalRate) + hcBridge.total + runoffPV;
+                const liabSummary = FM.liabilitySummary(liab, inputs.currentAge);
+                const liabActive = liab.enabled && liabSummary.totalBalance > 0;
+                const sub = [
+                  `${inputs.withdrawalRate}% withdrawal`,
+                  piAnnual > 0 ? `−${fmt(piAnnual)}/yr passive` : null,
+                  liabActive ? `+${fmt(liabSummary.totalAnnualPayments)}/yr liabilities` : null,
+                ].filter(Boolean).join(" · ");
+                return <Stat label="FI number" value={fmt(fiNum)} sub={sub} />;
               })()}
             </div>
+            {(inputs.liabilities?.enabled && (inputs.liabilities?.items?.length ?? 0) > 0) && (
+              <div style={{borderTop: "1px solid var(--rule)", paddingTop: 12}}>
+                {(() => {
+                  const summary = window.FIMath.liabilitySummary(inputs.liabilities, inputs.currentAge);
+                  return <Stat label="Total liabilities" value={`−${fmt(summary.totalBalance)}`} sub={`${fmt(summary.totalAnnualPayments)}/yr payments`} />;
+                })()}
+              </div>
+            )}
             <div style={{borderTop: "1px solid var(--rule)", paddingTop: 12}}>
               <Stat label="Real return" value={`${(window.FIMath.realReturn(inputs.annualReturn, inputs.inflation) * 100).toFixed(2)}%`} sub="after inflation" />
             </div>

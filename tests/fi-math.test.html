@@ -1,0 +1,569 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>FIMath Test Suite</title>
+  <style>
+    body { font-family: monospace; padding: 1.5rem; background: #0f0f0f; color: #ccc; }
+    h1 { color: #fff; margin-bottom: 1.5rem; }
+    .suite { margin-bottom: 1.5rem; }
+    .suite-name { color: #7aa2f7; font-size: 1rem; font-weight: bold; margin-bottom: 0.4rem; }
+    .pass { color: #9ece6a; }
+    .fail { color: #f7768e; }
+    .error { color: #e0af68; }
+    .summary { margin-top: 1.5rem; font-size: 1.1rem; font-weight: bold; }
+    .summary.all-pass { color: #9ece6a; }
+    .summary.has-fail { color: #f7768e; }
+    pre { margin: 0 0 0 1.5rem; font-size: 0.85rem; }
+  </style>
+</head>
+<body>
+  <h1>FIMath Test Suite</h1>
+  <div id="output"></div>
+
+  <script src="../lib/fi-math.js"></script>
+  <script>
+    // ---------------------------------------------------------------------------
+    // Micro test framework
+    // ---------------------------------------------------------------------------
+    const suites = [];
+    let currentSuite = null;
+
+    function describe(name, fn) {
+      currentSuite = { name, tests: [] };
+      suites.push(currentSuite);
+      fn();
+      currentSuite = null;
+    }
+
+    function it(name, fn) {
+      currentSuite.tests.push({ name, fn });
+    }
+
+    function expect(actual) {
+      return {
+        toBe(expected) {
+          if (actual !== expected) throw new Error(`expected ${JSON.stringify(expected)}, got ${JSON.stringify(actual)}`);
+        },
+        toBeCloseTo(expected, digits = 4) {
+          const tol = 0.5 * Math.pow(10, -digits);
+          if (Math.abs(actual - expected) > tol) {
+            throw new Error(`expected ~${expected} (±${tol}), got ${actual}`);
+          }
+        },
+        toBeGreaterThan(n) {
+          if (!(actual > n)) throw new Error(`expected ${actual} > ${n}`);
+        },
+        toBeLessThan(n) {
+          if (!(actual < n)) throw new Error(`expected ${actual} < ${n}`);
+        },
+        toBeBetween(lo, hi) {
+          if (actual < lo || actual > hi) throw new Error(`expected ${actual} to be between ${lo} and ${hi}`);
+        },
+        toBeNull() {
+          if (actual !== null) throw new Error(`expected null, got ${JSON.stringify(actual)}`);
+        },
+        toBeTruthy() {
+          if (!actual) throw new Error(`expected truthy, got ${JSON.stringify(actual)}`);
+        },
+        toBeFalsy() {
+          if (actual) throw new Error(`expected falsy, got ${JSON.stringify(actual)}`);
+        },
+        toEqual(expected) {
+          const a = JSON.stringify(actual), b = JSON.stringify(expected);
+          if (a !== b) throw new Error(`expected ${b}, got ${a}`);
+        },
+      };
+    }
+
+    // ---------------------------------------------------------------------------
+    // Helpers
+    // ---------------------------------------------------------------------------
+    const M = window.FIMath;
+
+    function baseInputs(overrides = {}) {
+      return {
+        currentAge: 30,
+        currentNetWorth: 100_000,
+        annualIncome: 100_000,
+        annualExpenses: 60_000,
+        annualReturn: 7,
+        inflation: 3,
+        withdrawalRate: 4,
+        yearsToProject: 40,
+        ...overrides,
+      };
+    }
+
+    // ---------------------------------------------------------------------------
+    // Tests
+    // ---------------------------------------------------------------------------
+
+    describe("realReturn", () => {
+      it("returns ~3.88% for 7% nominal / 3% inflation", () => {
+        // (1.07 / 1.03) - 1 ≈ 0.038835
+        expect(M.realReturn(7, 3)).toBeCloseTo(0.038835, 4);
+      });
+      it("returns 0 when nominal equals inflation", () => {
+        expect(M.realReturn(5, 5)).toBeCloseTo(0, 6);
+      });
+      it("returns exact value for 0% nominal / 0% inflation", () => {
+        expect(M.realReturn(0, 0)).toBe(0);
+      });
+    });
+
+    describe("amortizationMonths", () => {
+      it("returns 0 for zero balance", () => {
+        expect(M.amortizationMonths(0, 5, 1000)).toBe(0);
+      });
+      it("returns 0 for zero payment", () => {
+        expect(M.amortizationMonths(10_000, 5, 0)).toBe(0);
+      });
+      it("returns Infinity when payment <= monthly interest", () => {
+        // $100k at 12% → $1000/mo interest; paying $1000 never pays off
+        expect(M.amortizationMonths(100_000, 12, 1000)).toBe(Infinity);
+      });
+      it("computes months for a 30-year mortgage", () => {
+        // $300k at 6% → payment = $1798.65/mo → 360 months
+        const months = M.amortizationMonths(300_000, 6, 1798.65);
+        expect(months).toBeCloseTo(360, 0);
+      });
+      it("returns balance/payment for 0% rate", () => {
+        expect(M.amortizationMonths(12_000, 0, 1000)).toBeCloseTo(12, 4);
+      });
+    });
+
+    describe("liabilityOutflowInYear", () => {
+      it("interest_only returns annual interest each year", () => {
+        const item = { kind: "interest_only", balance: 100_000, rate: 6 };
+        expect(M.liabilityOutflowInYear(item, 0)).toBeCloseTo(6_000, 1);
+        expect(M.liabilityOutflowInYear(item, 20)).toBeCloseTo(6_000, 1);
+      });
+      it("amortizing returns 0 after payoff", () => {
+        // ~12-month loan: $12k at 0%, $1000/mo
+        const item = { kind: "amortizing", balance: 12_000, rate: 0, monthlyPayment: 1000 };
+        expect(M.liabilityOutflowInYear(item, 0)).toBeCloseTo(12_000, 0);
+        expect(M.liabilityOutflowInYear(item, 2)).toBe(0);
+      });
+      it("underwater amortizing treated as interest-only perpetual cost", () => {
+        // $100k at 12%, paying $500/mo (less than $1000/mo interest)
+        const item = { kind: "amortizing", balance: 100_000, rate: 12, monthlyPayment: 500 };
+        const outflow = M.liabilityOutflowInYear(item, 5);
+        // monthly interest = 100k * 0.01 = 1k → annual = 12k
+        expect(outflow).toBeCloseTo(12_000, 0);
+      });
+    });
+
+    describe("totalLiabilityOutflow", () => {
+      it("returns 0 when liabilities are disabled", () => {
+        const liab = { enabled: false, items: [{ kind: "interest_only", balance: 100_000, rate: 5 }] };
+        expect(M.totalLiabilityOutflow(liab, 0)).toBe(0);
+      });
+      it("returns 0 when no items", () => {
+        expect(M.totalLiabilityOutflow({ enabled: true, items: [] }, 0)).toBe(0);
+      });
+      it("sums multiple items", () => {
+        const liab = {
+          enabled: true,
+          items: [
+            { kind: "interest_only", balance: 100_000, rate: 6 },  // $6k/yr
+            { kind: "amortizing", balance: 12_000, rate: 0, monthlyPayment: 1_000 }, // $12k/yr
+          ],
+        };
+        expect(M.totalLiabilityOutflow(liab, 0)).toBeCloseTo(18_000, 0);
+      });
+    });
+
+    describe("liabilityNetWorthOffset", () => {
+      it("returns 0 when disabled", () => {
+        const liab = { enabled: false, items: [{ balance: 50_000, includeInNetWorth: true }] };
+        expect(M.liabilityNetWorthOffset(liab)).toBe(0);
+      });
+      it("only counts items with includeInNetWorth=true", () => {
+        const liab = {
+          enabled: true,
+          items: [
+            { balance: 50_000, includeInNetWorth: true },
+            { balance: 30_000, includeInNetWorth: false },
+          ],
+        };
+        expect(M.liabilityNetWorthOffset(liab)).toBe(50_000);
+      });
+    });
+
+    describe("interestOnlyAnnualCost", () => {
+      it("returns 0 for amortizing items", () => {
+        const liab = { enabled: true, items: [{ kind: "amortizing", balance: 100_000, rate: 5, monthlyPayment: 1000 }] };
+        expect(M.interestOnlyAnnualCost(liab)).toBe(0);
+      });
+      it("sums interest-only costs", () => {
+        const liab = {
+          enabled: true,
+          items: [
+            { kind: "interest_only", balance: 100_000, rate: 6 },   // $6k
+            { kind: "interest_only", balance: 200_000, rate: 3 },   // $6k
+          ],
+        };
+        expect(M.interestOnlyAnnualCost(liab)).toBeCloseTo(12_000, 0);
+      });
+    });
+
+    describe("passiveIncomeInYear", () => {
+      it("returns 0 when disabled", () => {
+        expect(M.passiveIncomeInYear({ enabled: false, annual: 10_000, growthRate: 0 }, 5, 3)).toBe(0);
+      });
+      it("returns 0 when annual is 0", () => {
+        expect(M.passiveIncomeInYear({ enabled: true, annual: 0, growthRate: 5 }, 5, 3)).toBe(0);
+      });
+      it("returns base amount in year 0 with 0% growth", () => {
+        expect(M.passiveIncomeInYear({ enabled: true, annual: 12_000, growthRate: 0 }, 0, 3)).toBeCloseTo(12_000, 1);
+      });
+      it("grows at real rate above inflation", () => {
+        // nominalGrowth=5%, inflation=3% → realGrowth ≈ 1.94%; after 10 years ≈ 12000 * 1.0194^10
+        const pi = { enabled: true, annual: 12_000, growthRate: 5 };
+        const val = M.passiveIncomeInYear(pi, 10, 3);
+        const expected = 12_000 * Math.pow((1.05 / 1.03), 10);
+        expect(val).toBeCloseTo(expected, 1);
+      });
+      it("shrinks in real terms when growth < inflation", () => {
+        const pi = { enabled: true, annual: 12_000, growthRate: 1 };
+        expect(M.passiveIncomeInYear(pi, 5, 3)).toBeLessThan(12_000);
+      });
+    });
+
+    describe("healthcareBridge", () => {
+      it("returns zeros when disabled", () => {
+        const r = M.healthcareBridge({ healthcare: { enabled: false, annualCost: 20_000, retireAge: 50 } });
+        expect(r.total).toBe(0);
+      });
+      it("returns zeros when coveredByExpenses", () => {
+        const r = M.healthcareBridge({ healthcare: { coveredByExpenses: true, annualCost: 20_000, retireAge: 50 } });
+        expect(r.total).toBe(0);
+      });
+      it("calculates bridge correctly", () => {
+        const r = M.healthcareBridge({
+          healthcare: { enabled: true, annualCost: 24_000, retireAge: 55, medicareAge: 65 },
+        });
+        expect(r.years).toBe(10);
+        expect(r.annual).toBe(24_000);
+        expect(r.total).toBe(240_000);
+      });
+      it("uses targetAge as fallback when retireAge not set", () => {
+        const r = M.healthcareBridge({
+          targetAge: 52,
+          healthcare: { enabled: true, annualCost: 10_000, medicareAge: 65 },
+        });
+        expect(r.years).toBe(13);
+        expect(r.total).toBe(130_000);
+      });
+    });
+
+    describe("project — basic mechanics", () => {
+      it("year 0 balance equals currentNetWorth", () => {
+        const series = M.project(baseInputs());
+        expect(series[0].balance).toBe(100_000);
+      });
+      it("year 0 contributions and growth are 0", () => {
+        const series = M.project(baseInputs());
+        expect(series[0].contributions).toBe(0);
+        expect(series[0].growth).toBe(0);
+      });
+      it("balance grows over time at positive real return", () => {
+        const series = M.project(baseInputs());
+        expect(series[10].balance).toBeGreaterThan(series[0].balance);
+      });
+      it("fiTarget is consistent across all years", () => {
+        const series = M.project(baseInputs());
+        const target = series[0].fiTarget;
+        for (const pt of series) expect(pt.fiTarget).toBe(target);
+      });
+      it("fiTarget = annualExpenses / withdrawalRate (no liabilities, no HC, no PI)", () => {
+        const inputs = baseInputs({ annualExpenses: 60_000, withdrawalRate: 4 });
+        const series = M.project(inputs);
+        // 60000 / 0.04 = 1,500,000
+        expect(series[0].fiTarget).toBeCloseTo(1_500_000, 0);
+      });
+      it("savingsRate override works", () => {
+        const inputs = baseInputs({ annualIncome: 100_000, savingsRate: 30 });
+        const series = M.project(inputs);
+        // year 1 contributions should be 30k
+        expect(series[1].contributions).toBeCloseTo(30_000, 1);
+      });
+      it("age tracks correctly", () => {
+        const series = M.project(baseInputs({ currentAge: 30 }));
+        expect(series[0].age).toBe(30);
+        expect(series[10].age).toBe(40);
+      });
+      it("returns correct number of data points", () => {
+        const series = M.project(baseInputs({ yearsToProject: 20 }));
+        expect(series.length).toBe(21); // 0 through 20 inclusive
+      });
+      it("passive income reduces contributions needed", () => {
+        const withPI = M.project(baseInputs({
+          passiveIncome: { enabled: true, annual: 10_000, growthRate: 0 },
+        }));
+        const without = M.project(baseInputs());
+        // FI target should be lower with PI
+        expect(withPI[0].fiTarget).toBeLessThan(without[0].fiTarget);
+      });
+      it("healthcare bridge adds to FI number", () => {
+        const withHC = M.project(baseInputs({
+          healthcare: { enabled: true, annualCost: 20_000, retireAge: 50, medicareAge: 65 },
+        }));
+        const without = M.project(baseInputs());
+        expect(withHC[0].fiTarget).toBeGreaterThan(without[0].fiTarget);
+        // Bridge = 20000 * 15 = 300000
+        expect(withHC[0].fiTarget - without[0].fiTarget).toBeCloseTo(300_000, 0);
+      });
+    });
+
+    describe("timeToFI", () => {
+      it("returns reached=true when FI is achievable", () => {
+        const result = M.timeToFI(baseInputs({ currentNetWorth: 1_400_000 }));
+        expect(result.reached).toBeTruthy();
+      });
+      it("returns reached=false when FI is not achievable in projection window", () => {
+        // Very high expenses, very low savings, short window
+        const result = M.timeToFI(baseInputs({
+          currentNetWorth: 0,
+          annualIncome: 60_001,
+          annualExpenses: 60_000,
+          yearsToProject: 5,
+        }));
+        expect(result.reached).toBeFalsy();
+      });
+      it("already-FI person shows year 0", () => {
+        const result = M.timeToFI(baseInputs({ currentNetWorth: 2_000_000 }));
+        expect(result.years).toBe(0);
+        expect(result.age).toBe(30);
+      });
+      it("target matches project fiTarget", () => {
+        const inputs = baseInputs();
+        const series = M.project(inputs);
+        const result = M.timeToFI(inputs);
+        expect(result.target).toBe(series[0].fiTarget);
+      });
+    });
+
+    describe("coastFI", () => {
+      it("returns a positive value for reasonable inputs", () => {
+        const val = M.coastFI(baseInputs(), 65);
+        expect(val).toBeGreaterThan(0);
+      });
+      it("coast amount grows smaller the farther away targetAge is", () => {
+        const close = M.coastFI(baseInputs(), 40);
+        const far   = M.coastFI(baseInputs(), 65);
+        expect(far).toBeLessThan(close);
+      });
+      it("coast amount equals FI number when targetAge === currentAge (0 years to grow)", () => {
+        const inputs = baseInputs({ currentAge: 30 });
+        const fi = inputs.annualExpenses * (100 / inputs.withdrawalRate);
+        const coast = M.coastFI(inputs, 30);
+        expect(coast).toBeCloseTo(fi, 0);
+      });
+      it("passive income reduces coast FI number", () => {
+        const withPI = M.coastFI(baseInputs({
+          passiveIncome: { enabled: true, annual: 10_000, growthRate: 0 },
+        }), 65);
+        const without = M.coastFI(baseInputs(), 65);
+        expect(withPI).toBeLessThan(without);
+      });
+    });
+
+    describe("baristaFI", () => {
+      it("returns a positive value for reasonable inputs", () => {
+        const val = M.baristaFI(baseInputs(), 20_000);
+        expect(val).toBeGreaterThan(0);
+      });
+      it("higher part-time income → lower barista number", () => {
+        const lo = M.baristaFI(baseInputs(), 10_000);
+        const hi = M.baristaFI(baseInputs(), 40_000);
+        expect(hi).toBeLessThan(lo);
+      });
+      it("when part-time income covers all expenses, target is 0 (no liabilities)", () => {
+        const val = M.baristaFI(baseInputs({ annualExpenses: 60_000 }), 60_000);
+        expect(val).toBeCloseTo(0, 0);
+      });
+      it("passive income reduces barista target", () => {
+        const withPI = M.baristaFI(baseInputs({
+          passiveIncome: { enabled: true, annual: 10_000, growthRate: 0 },
+        }), 20_000);
+        const without = M.baristaFI(baseInputs(), 20_000);
+        expect(withPI).toBeLessThan(without);
+      });
+    });
+
+    describe("monteCarlo", () => {
+      it("returns expected shape", () => {
+        const result = M.monteCarlo(baseInputs(), { trials: 100 });
+        expect(typeof result.successRate).toBe("number");
+        expect(typeof result.trials).toBe("number");
+        expect(result.trials).toBe(100);
+        expect(Array.isArray(result.paths)).toBeTruthy();
+        expect(Array.isArray(result.percentiles.p50)).toBeTruthy();
+      });
+      it("successRate is between 0 and 1", () => {
+        const result = M.monteCarlo(baseInputs(), { trials: 100 });
+        expect(result.successRate).toBeBetween(0, 1);
+      });
+      it("successRate is high for strong inputs", () => {
+        const result = M.monteCarlo(
+          baseInputs({ currentNetWorth: 2_000_000, annualExpenses: 60_000, withdrawalRate: 4 }),
+          { trials: 200 }
+        );
+        expect(result.successRate).toBeGreaterThan(0.8);
+      });
+      it("percentile arrays have length yearsToProject+1", () => {
+        const result = M.monteCarlo(baseInputs({ yearsToProject: 30 }), { trials: 50 });
+        expect(result.percentiles.p50.length).toBe(31);
+      });
+      it("p50 > p25 > p10 at retirement horizon", () => {
+        const result = M.monteCarlo(baseInputs(), { trials: 200 });
+        const last = result.percentiles.p50.length - 1;
+        expect(result.percentiles.p50[last]).toBeGreaterThan(result.percentiles.p25[last]);
+        expect(result.percentiles.p25[last]).toBeGreaterThan(result.percentiles.p10[last]);
+      });
+    });
+
+    describe("fmtMoney", () => {
+      it("formats millions", () => {
+        expect(M.fmtMoney(1_500_000)).toBe("$1.50M");
+      });
+      it("formats tens of thousands", () => {
+        expect(M.fmtMoney(25_000)).toBe("$25K");
+      });
+      it("formats thousands with 1 decimal", () => {
+        expect(M.fmtMoney(5_500)).toBe("$5.5K");
+      });
+      it("formats small amounts as rounded integer", () => {
+        expect(M.fmtMoney(750)).toBe("$750");
+      });
+      it("handles null", () => {
+        expect(M.fmtMoney(null)).toBe("—");
+      });
+      it("handles NaN", () => {
+        expect(M.fmtMoney(NaN)).toBe("—");
+      });
+    });
+
+    describe("fmtMoneyFull", () => {
+      it("formats full amount", () => {
+        expect(M.fmtMoneyFull(1_500_000)).toBe("$1,500,000");
+      });
+      it("handles null", () => {
+        expect(M.fmtMoneyFull(null)).toBe("—");
+      });
+    });
+
+    describe("fmtPct", () => {
+      it("default 1 decimal", () => {
+        expect(M.fmtPct(4)).toBe("4.0%");
+      });
+      it("respects dec param", () => {
+        expect(M.fmtPct(3.887, 2)).toBe("3.89%");
+      });
+    });
+
+    describe("amortizingRunoffPV", () => {
+      it("returns 0 when disabled", () => {
+        const liab = { enabled: false, items: [{ kind: "amortizing", balance: 100_000, rate: 5, monthlyPayment: 1000 }] };
+        expect(M.amortizingRunoffPV(liab, 0.04)).toBe(0);
+      });
+      it("returns 0 for interest_only items", () => {
+        const liab = { enabled: true, items: [{ kind: "interest_only", balance: 100_000, rate: 5 }] };
+        expect(M.amortizingRunoffPV(liab, 0.04)).toBe(0);
+      });
+      it("returns positive value for an amortizing loan", () => {
+        const liab = {
+          enabled: true,
+          items: [{ kind: "amortizing", balance: 300_000, rate: 6, monthlyPayment: 1798.65 }],
+        };
+        expect(M.amortizingRunoffPV(liab, 0.04)).toBeGreaterThan(0);
+      });
+      it("PV with r=0 equals annual payment × years", () => {
+        // $12k at 0%, $1000/mo → 12 months → annualPayment=$12k, years=1
+        const liab = {
+          enabled: true,
+          items: [{ kind: "amortizing", balance: 12_000, rate: 0, monthlyPayment: 1_000 }],
+        };
+        const pv = M.amortizingRunoffPV(liab, 0);
+        expect(pv).toBeCloseTo(12_000, 0);
+      });
+    });
+
+    describe("liabilitySummary", () => {
+      it("returns zero totals for empty items", () => {
+        const r = M.liabilitySummary({ items: [] }, 30);
+        expect(r.totalBalance).toBe(0);
+        expect(r.totalAnnualPayments).toBe(0);
+      });
+      it("computes payoffAge for amortizing items", () => {
+        const liab = {
+          items: [{ kind: "amortizing", balance: 12_000, rate: 0, monthlyPayment: 1_000 }],
+        };
+        const r = M.liabilitySummary(liab, 30);
+        expect(r.items[0].payoffAge).toBeCloseTo(31, 0);
+      });
+      it("marks underwater items", () => {
+        const liab = {
+          items: [{ kind: "amortizing", balance: 100_000, rate: 12, monthlyPayment: 500 }],
+        };
+        const r = M.liabilitySummary(liab, 30);
+        expect(r.items[0].underwater).toBeTruthy();
+      });
+      it("interest_only annual payment = balance × rate", () => {
+        const liab = {
+          items: [{ kind: "interest_only", balance: 200_000, rate: 5 }],
+        };
+        const r = M.liabilitySummary(liab, 30);
+        expect(r.items[0].annualPayment).toBeCloseTo(10_000, 0);
+      });
+    });
+
+    // ---------------------------------------------------------------------------
+    // Run
+    // ---------------------------------------------------------------------------
+    function run() {
+      const out = document.getElementById("output");
+      let totalPass = 0, totalFail = 0;
+
+      for (const suite of suites) {
+        const div = document.createElement("div");
+        div.className = "suite";
+        const title = document.createElement("div");
+        title.className = "suite-name";
+        title.textContent = suite.name;
+        div.appendChild(title);
+
+        for (const test of suite.tests) {
+          const line = document.createElement("pre");
+          try {
+            test.fn();
+            line.className = "pass";
+            line.textContent = `  ✓  ${test.name}`;
+            totalPass++;
+          } catch (e) {
+            line.className = "fail";
+            line.textContent = `  ✗  ${test.name}\n     ${e.message}`;
+            totalFail++;
+          }
+          div.appendChild(line);
+        }
+        out.appendChild(div);
+      }
+
+      const summary = document.createElement("div");
+      summary.className = `summary ${totalFail === 0 ? "all-pass" : "has-fail"}`;
+      summary.textContent = totalFail === 0
+        ? `All ${totalPass} tests passed.`
+        : `${totalPass} passed, ${totalFail} failed.`;
+      out.appendChild(summary);
+
+      // Also log to console for headless runs
+      console.log(summary.textContent);
+    }
+
+    run();
+  </script>
+</body>
+</html>

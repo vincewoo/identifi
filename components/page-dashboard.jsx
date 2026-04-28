@@ -9,11 +9,18 @@ function DashboardPage({ inputs, setPage }) {
   const hcBridge = window.FIMath.healthcareBridge(inputs);
   const piAnnual = (inputs.passiveIncome?.enabled && inputs.passiveIncome?.annual > 0)
     ? inputs.passiveIncome.annual : 0;
-  const baseFI = Math.max(0, inputs.annualExpenses - piAnnual) * (100 / inputs.withdrawalRate);
-  const fiNumber = baseFI + hcBridge.total;
+  const liab = inputs.liabilities || {};
+  const ioAnnual = window.FIMath.interestOnlyAnnualCost(liab);
+  const realRet = window.FIMath.realReturn(inputs.annualReturn, inputs.inflation);
+  const runoffPV = window.FIMath.amortizingRunoffPV(liab, realRet);
+  const liabSummary = window.FIMath.liabilitySummary(liab, inputs.currentAge);
+  const liabActive = liab.enabled && liabSummary.totalBalance > 0;
+  const baseFI = Math.max(0, inputs.annualExpenses + ioAnnual - piAnnual) * (100 / inputs.withdrawalRate);
+  const fiNumber = baseFI + hcBridge.total + runoffPV;
   const yearsLeft = fi.years;
   const fiDate = yearsLeft != null ? new Date(2026, 3, 24 + yearsLeft * 365.25) : null;
-  const progress = Math.min(1, inputs.currentNetWorth / fiNumber);
+  const effectiveNetWorth = inputs.currentNetWorth - window.FIMath.liabilityNetWorthOffset(liab);
+  const progress = Math.min(1, effectiveNetWorth / fiNumber);
 
   // Coast FI at age 65
   const coastNum = window.FIMath.coastFI(inputs, 65);
@@ -79,6 +86,12 @@ function DashboardPage({ inputs, setPage }) {
               <span className="v" style={{fontSize: 14, color: "var(--ink-2)"}}>−{fmt(inputs.passiveIncome.annual)}/yr</span>
             </div>
           )}
+          {liabActive && (
+            <div className="summary-row" style={{paddingLeft: 14, borderLeft: "2px solid var(--rule-strong)", marginLeft: -16}}>
+              <span className="k" style={{fontSize: 11}}>↳ liabilities</span>
+              <span className="v" style={{fontSize: 14, color: "var(--ink-2)"}}>+{fmt(liabSummary.totalAnnualPayments)}/yr</span>
+            </div>
+          )}
           <div className="summary-row">
             <span className="k">Today</span>
             <span className="v">{fmt(inputs.currentNetWorth)}</span>
@@ -87,7 +100,7 @@ function DashboardPage({ inputs, setPage }) {
             <div className="progress"><span style={{width: `${progress * 100}%`}}></span></div>
             <div style={{display: "flex", justifyContent: "space-between", marginTop: 6, fontSize: 11, color: "var(--ink-3)", fontFamily: "var(--font-mono)"}}>
               <span>{(progress * 100).toFixed(1)}% of FI</span>
-              <span>{fmt(fiNumber - inputs.currentNetWorth)} remaining</span>
+              <span>{fmt(fiNumber - effectiveNetWorth)} remaining</span>
             </div>
           </div>
         </div>

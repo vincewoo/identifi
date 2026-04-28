@@ -46,6 +46,10 @@ const DEFAULT_INPUTS = {
     growthRate: 0,       // % per year nominal growth
     preRetirement: true, // if true, counts as extra contributions before FI
   },
+  liabilities: {
+    enabled: false,
+    items: [],           // array of { id, label, kind, balance, rate, monthlyPayment, includeInNetWorth }
+  },
 };
 
 const DEFAULT_SCENARIOS = [
