@@ -29,7 +29,7 @@ All exposed as `window.FIMath`. Key functions:
 - `timeToFI(inputs)` — finds the first year `balance >= fiTarget`
 - `coastFI(inputs, targetAge)` — lump sum needed today to coast to FI by `targetAge`
 - `baristaFI(inputs, partTimeIncome)` — portfolio needed when part-time income covers the gap
-- `monteCarlo(inputs, opts)` — 500-trial Box-Muller simulation, returns `{paths, percentiles, successRate}`
+- `monteCarlo(inputs, opts)` — 500-trial lognormal-return simulation (median tracks `project()`), returns `{paths, percentiles, successRate}`; `opts.seed` gives a reproducible run
 - `healthcareBridge(inputs)` — pre-Medicare bridge fund: `years × annualCost`
 - `fmtMoney(n)` / `fmtMoneyFull(n)` / `fmtPct(n)` — formatting helpers
 

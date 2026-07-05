@@ -112,22 +112,28 @@ function MonteCarloChart({ result, height = 280, retirementYear }) {
 
   return (
     <svg className="chart" viewBox={`0 0 ${W} ${H}`}>
+      <clipPath id="mc-plot-clip">
+        <rect x={PAD_L} y={PAD_T} width={W - PAD_R - PAD_L} height={H - PAD_B - PAD_T} />
+      </clipPath>
+
       {yTicks.map((v, i) => (
         <line key={`gy${i}`} className="grid" x1={PAD_L} x2={W - PAD_R} y1={ys(v)} y2={ys(v)} />
       ))}
 
-      {/* p10-p90 band */}
-      <path d={buildBand(percentiles.p10, percentiles.p90)} fill="var(--accent)" fillOpacity="0.08" />
-      {/* p25-p75 band */}
-      <path d={buildBand(percentiles.p25, percentiles.p75)} fill="var(--accent)" fillOpacity="0.18" />
+      <g clipPath="url(#mc-plot-clip)">
+        {/* p10-p90 band */}
+        <path d={buildBand(percentiles.p10, percentiles.p90)} fill="var(--accent)" fillOpacity="0.08" />
+        {/* p25-p75 band */}
+        <path d={buildBand(percentiles.p25, percentiles.p75)} fill="var(--accent)" fillOpacity="0.18" />
 
-      {/* sample paths (faint) */}
-      {paths.slice(0, 30).map((p, i) => (
-        <path key={`p${i}`} d={buildPath(p)} fill="none" stroke="var(--ink-3)" strokeOpacity="0.08" strokeWidth="0.5" />
-      ))}
+        {/* sample paths (faint) */}
+        {paths.slice(0, 30).map((p, i) => (
+          <path key={`p${i}`} d={buildPath(p)} fill="none" stroke="var(--ink-3)" strokeOpacity="0.08" strokeWidth="0.5" />
+        ))}
 
-      {/* median */}
-      <path d={buildPath(percentiles.p50)} fill="none" stroke="var(--ink)" strokeWidth="1.75" />
+        {/* median */}
+        <path d={buildPath(percentiles.p50)} fill="none" stroke="var(--ink)" strokeWidth="1.75" />
+      </g>
 
       {/* retirement marker */}
       {retirementYear != null && retirementYear < years && (
@@ -145,7 +151,7 @@ function MonteCarloChart({ result, height = 280, retirementYear }) {
       ))}
 
       <line className="axis" x1={PAD_L} x2={W - PAD_R} y1={H - PAD_B} y2={H - PAD_B} />
-      {[0, 10, 20, 30, 40, 50].filter(y => y < years).map(t => (
+      {[0, 10, 20, 30, 40, 50, 60, 70].filter(y => y < years).map(t => (
         <g key={`x${t}`}>
           <text x={xs(t)} y={H - PAD_B + 16} textAnchor="middle">y{t}</text>
         </g>

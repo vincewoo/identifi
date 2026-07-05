@@ -423,6 +423,70 @@
         expect(result.percentiles.p50[last]).toBeGreaterThan(result.percentiles.p25[last]);
         expect(result.percentiles.p25[last]).toBeGreaterThan(result.percentiles.p10[last]);
       });
+      it("same seed reproduces identical results", () => {
+        const a = M.monteCarlo(baseInputs(), { trials: 100, seed: 42 });
+        const b = M.monteCarlo(baseInputs(), { trials: 100, seed: 42 });
+        expect(a.successRate).toBe(b.successRate);
+        expect(a.percentiles.p50[20]).toBe(b.percentiles.p50[20]);
+      });
+      it("different seeds give different results", () => {
+        const a = M.monteCarlo(baseInputs(), { trials: 100, seed: 1 });
+        const b = M.monteCarlo(baseInputs(), { trials: 100, seed: 2 });
+        expect(a.percentiles.p50[20] !== b.percentiles.p50[20]).toBeTruthy();
+      });
+      it("zero volatility matches the deterministic projection", () => {
+        const inputs = baseInputs({ yearsToProject: 20, retirementYear: 20, healthcare: { enabled: false } });
+        const mc = M.monteCarlo(inputs, { trials: 5, stdDev: 0, seed: 1 });
+        const det = M.project(inputs);
+        expect(mc.percentiles.p50[20]).toBeCloseTo(det[20].balance, 0);
+      });
+      it("median tracks the deterministic projection under volatility", () => {
+        const inputs = baseInputs({ yearsToProject: 20, retirementYear: 20, healthcare: { enabled: false } });
+        const mc = M.monteCarlo(inputs, { trials: 4000, stdDev: 15, seed: 7 });
+        const det = M.project(inputs);
+        expect(mc.percentiles.p50[20] / det[20].balance).toBeBetween(0.9, 1.1);
+      });
+      it("a single year can never lose more than 100% (no negative-flip)", () => {
+        const mc = M.monteCarlo(
+          baseInputs({ currentNetWorth: 100_000, savingsRate: 0, yearsToProject: 30, retirementYear: 40 }),
+          { trials: 500, stdDev: 30, seed: 3 }
+        );
+        // No savings, no withdrawals: balances must stay strictly positive
+        const minVal = Math.min(...mc.paths.flat());
+        expect(minVal).toBeGreaterThan(0);
+      });
+      it("healthcare bridge ends at Medicare age regardless of hc.retireAge", () => {
+        const inputs = baseInputs({
+          currentAge: 30, currentNetWorth: 1_000_000, annualExpenses: 40_000,
+          yearsToProject: 50, retirementYear: 30,
+          healthcare: { enabled: true, retireAge: 50, medicareAge: 65, annualCost: 20_000 },
+        });
+        const mc = M.monteCarlo(inputs, { trials: 1, stdDev: 0, seed: 1 });
+        const p = mc.percentiles.p50;
+        const rr = 1 + M.realReturn(7, 3);
+        const withdrawalIn = (y) => p[y - 1] * rr - p[y];
+        // Retired at 60: bridge charged through age 65 (year 35), not through 75
+        expect(withdrawalIn(33)).toBeCloseTo(60_000, 0); // age 63: expenses + HC
+        expect(withdrawalIn(36)).toBeCloseTo(40_000, 0); // age 66: Medicare, expenses only
+      });
+      it("ending the horizon underwater counts as failure", () => {
+        const mc = M.monteCarlo(
+          baseInputs({ currentNetWorth: 10_000, annualIncome: 40_000, annualExpenses: 90_000,
+            yearsToProject: 20, retirementYear: 20 }),
+          { trials: 100, seed: 5 }
+        );
+        expect(mc.successRate).toBeLessThan(0.05);
+      });
+      it("passive income surplus above expenses accrues to the portfolio", () => {
+        const inputs = baseInputs({
+          currentNetWorth: 0, annualIncome: 0, annualExpenses: 40_000, savingsRate: 0,
+          yearsToProject: 10, retirementYear: 0,
+          passiveIncome: { enabled: true, annual: 100_000, growthRate: 3 },
+        });
+        // 100K passive vs 40K expenses: ~60K/yr real surplus should compound, not vanish
+        const mc = M.monteCarlo(inputs, { trials: 20, stdDev: 0, seed: 2 });
+        expect(mc.percentiles.p50[10]).toBeGreaterThan(500_000);
+      });
     });
 
     describe("fmtMoney", () => {

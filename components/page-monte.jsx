@@ -5,12 +5,42 @@ function MonteCarloPage({ inputs }) {
   const [trials, setTrials] = useStateMC(500);
   const [stdDev, setStdDev] = useStateMC(15);
   const [retYear, setRetYear] = useStateMC(20);
-  const [seed, setSeed] = useStateMC(0);
+  const [seed, setSeed] = useStateMC(1);
+
+  // Always simulate at least 25 drawdown years past retirement, so success
+  // can't be trivially 100% just because the horizon ends before withdrawals.
+  const horizon = Math.max(50, retYear + 25);
 
   const result = useMemoMC(() =>
-    window.FIMath.monteCarlo({ ...inputs, retirementYear: retYear }, { trials, stdDev }),
-    [inputs, trials, stdDev, retYear, seed]
+    window.FIMath.monteCarlo(
+      { ...inputs, retirementYear: retYear, yearsToProject: horizon },
+      { trials, stdDev, seed }
+    ),
+    [inputs, trials, stdDev, retYear, seed, horizon]
   );
+
+  const exportRuns = () => {
+    const { percentiles, paths } = result;
+    const header = ["year", "p10", "p25", "p50", "p75", "p90",
+      ...paths.map((_, i) => `run${i + 1}`)];
+    const rows = [header];
+    for (let y = 0; y < percentiles.p50.length; y++) {
+      rows.push([
+        y,
+        Math.round(percentiles.p10[y]), Math.round(percentiles.p25[y]),
+        Math.round(percentiles.p50[y]), Math.round(percentiles.p75[y]),
+        Math.round(percentiles.p90[y]),
+        ...paths.map(p => Math.round(p[y])),
+      ]);
+    }
+    const csv = rows.map(r => r.join(",")).join("\n");
+    const url = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `identifi-monte-carlo-${result.trials}trials-${horizon}y.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
 
   const fmt = window.FIMath.fmtMoney;
   const finalP50 = result.percentiles.p50[result.percentiles.p50.length - 1];
@@ -30,7 +60,7 @@ function MonteCarloPage({ inputs }) {
         sub={`${result.trials.toLocaleString()} alternate timelines, randomized returns, the same plan. Most of finance is making peace with a probability distribution.`}
         actions={<>
           <button className="btn ghost" onClick={() => setSeed(seed + 1)}>↻ Re-roll</button>
-          <button className="btn primary">Export runs</button>
+          <button className="btn primary" onClick={exportRuns}>Export runs</button>
         </>}
       />
 
@@ -118,7 +148,7 @@ function MonteCarloPage({ inputs }) {
           </div>
           <div style={{fontSize: 13, color: "var(--ink-2)", lineHeight: 1.6}}>
             <p style={{marginTop: 0}}>Each thin line is one simulated lifetime — same plan, different luck. The bold line is the median outcome. The shaded bands hold 50% and 80% of all outcomes.</p>
-            <p>Success means the portfolio is still positive at the end of the horizon. Failure means it isn't.</p>
+            <p>Success means the portfolio never runs dry — it stays above zero through every year of the horizon. Failure means at least one year couldn't be funded.</p>
             <p style={{marginBottom: 0}} className="editorial">A 90% success rate isn't a 90% chance you'll be fine. It's a 90% chance the model thinks you'll be fine. Two different things.</p>
           </div>
         </div>
