@@ -31,6 +31,10 @@ const DEFAULT_INPUTS = {
   withdrawalRate: 4.0,
   realDollars: true,
   includeSS: false,
+  socialSecurity: {
+    claimAge: null,      // null = full retirement age, computed from currentAge
+    monthly: null,       // null = estimated from income via SSA bend points
+  },
   taxAware: false,
   sorr: true,
   healthcare: {

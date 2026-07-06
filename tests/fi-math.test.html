@@ -477,6 +477,29 @@
         );
         expect(mc.successRate).toBeLessThan(0.05);
       });
+      it("Social Security income raises the success rate", () => {
+        const strained = baseInputs({
+          currentAge: 40, currentNetWorth: 400_000, annualIncome: 100_000,
+          annualExpenses: 80_000, yearsToProject: 45, retirementYear: 15,
+        });
+        const withoutSS = M.monteCarlo(strained, { trials: 300, seed: 8 });
+        const withSS = M.monteCarlo({ ...strained, includeSS: true }, { trials: 300, seed: 8 });
+        expect(withSS.successRate).toBeGreaterThan(withoutSS.successRate);
+      });
+      it("Social Security starts at the claim age, not at retirement", () => {
+        const inputs = baseInputs({
+          currentAge: 40, currentNetWorth: 2_000_000, annualExpenses: 80_000,
+          yearsToProject: 40, retirementYear: 10, includeSS: true,
+          healthcare: { enabled: false },
+          socialSecurity: { claimAge: 67, monthly: 3_000 },
+        });
+        const mc = M.monteCarlo(inputs, { trials: 1, stdDev: 0, seed: 1 });
+        const p = mc.percentiles.p50;
+        const rr = 1 + M.realReturn(7, 3);
+        const withdrawalIn = (y) => p[y - 1] * rr - p[y];
+        expect(withdrawalIn(20)).toBeCloseTo(80_000, 0); // age 60: retired, no SS yet
+        expect(withdrawalIn(30)).toBeCloseTo(44_000, 0); // age 70: SS covers 36K/yr
+      });
       it("passive income surplus above expenses accrues to the portfolio", () => {
         const inputs = baseInputs({
           currentNetWorth: 0, annualIncome: 0, annualExpenses: 40_000, savingsRate: 0,
@@ -486,6 +509,39 @@
         // 100K passive vs 40K expenses: ~60K/yr real surplus should compound, not vanish
         const mc = M.monteCarlo(inputs, { trials: 20, stdDev: 0, seed: 2 });
         expect(mc.percentiles.p50[10]).toBeGreaterThan(500_000);
+      });
+    });
+
+    describe("socialSecurity", () => {
+      it("full retirement age is 67 for anyone born 1960 or later", () => {
+        const ss = M.socialSecurity(baseInputs({ currentAge: 30 }), { currentYear: 2026 });
+        expect(ss.fra).toBe(67);
+        expect(ss.claimAge).toBe(67);
+      });
+      it("estimates a plausible benefit from income (full career)", () => {
+        const ss = M.socialSecurity(baseInputs({ annualIncome: 100_000, targetAge: 67 }), { currentYear: 2026 });
+        // 35 years at $100K → AIME ≈ $8,333 → PIA ≈ $3,218/mo
+        expect(ss.monthly).toBeBetween(2_500, 3_600);
+      });
+      it("early retirement shrinks the benefit via missing earning years", () => {
+        const early = M.socialSecurity(baseInputs({ targetAge: 45 }), { currentYear: 2026 });
+        const full = M.socialSecurity(baseInputs({ targetAge: 67 }), { currentYear: 2026 });
+        expect(early.monthly).toBeLessThan(full.monthly);
+      });
+      it("claiming at 62 reduces and at 70 increases the benefit", () => {
+        const at67 = M.socialSecurity(baseInputs(), { currentYear: 2026 });
+        const at62 = M.socialSecurity(baseInputs({ socialSecurity: { claimAge: 62 } }), { currentYear: 2026 });
+        const at70 = M.socialSecurity(baseInputs({ socialSecurity: { claimAge: 70 } }), { currentYear: 2026 });
+        expect(at62.monthly / at67.monthly).toBeCloseTo(0.70, 2);
+        expect(at70.monthly / at67.monthly).toBeCloseTo(1.24, 2);
+      });
+      it("respects an explicit monthly override", () => {
+        const ss = M.socialSecurity(baseInputs({ socialSecurity: { monthly: 2_500 } }), { currentYear: 2026 });
+        expect(ss.monthly).toBe(2_500);
+      });
+      it("is enabled only when includeSS is true", () => {
+        expect(M.socialSecurity(baseInputs()).enabled).toBeFalsy();
+        expect(M.socialSecurity(baseInputs({ includeSS: true })).enabled).toBeTruthy();
       });
     });
 

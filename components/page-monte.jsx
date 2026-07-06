@@ -139,6 +139,16 @@ function MonteCarloPage({ inputs }) {
             <SliderField label="Retirement year" value={retYear} onChange={setRetYear}
               suffix="y" min={5} max={50} step={1}
               help="When contributions stop and withdrawals start" />
+            {inputs.includeSS && (() => {
+              const ss = window.FIMath.socialSecurity(inputs, {
+                retireAge: (inputs.currentAge ?? 0) + retYear,
+              });
+              return (
+                <div style={{fontSize: 12, color: "var(--ink-3)", fontFamily: "var(--font-mono)"}}>
+                  + Social Security {fmt(ss.annual)}/yr from age {Math.round(ss.claimAge)} — fixed income, immune to the dice
+                </div>
+              );
+            })()}
           </div>
         </div>
 
