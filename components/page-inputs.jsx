@@ -299,6 +299,23 @@ function SettingsPage({ inputs, setInputs }) {
             <Switch on={inputs.realDollars} onChange={v => set("realDollars", v)} />
           </div>
           <div className="toggle-row">
+            <div className="lab">Couple retiring together
+              <small>Two partners with independent ages, incomes, and retirement years</small>
+            </div>
+            <Switch on={inputs.couple ?? false} onChange={v => set("couple", v)} />
+          </div>
+          {inputs.couple && (
+            <div className="grid-2" style={{gap: 16, padding: "12px 0 4px"}}>
+              <Field label="Partner age" suffix="yrs"
+                value={inputs.partner?.age ?? inputs.currentAge}
+                onChange={v => set("partner", { ...(inputs.partner || {}), age: v })} />
+              <Field label="Partner income" prefix="$"
+                value={Math.round(inputs.partner?.income ?? inputs.annualIncome / 2)}
+                onChange={v => set("partner", { ...(inputs.partner || {}), income: v })}
+                help="Their share of the household income; the rest is yours" />
+            </div>
+          )}
+          <div className="toggle-row">
             <div className="lab">Include Social Security
               <small>
                 {(() => {
@@ -310,21 +327,13 @@ function SettingsPage({ inputs, setInputs }) {
             <Switch on={inputs.includeSS} onChange={v => set("includeSS", v)} />
           </div>
           {inputs.includeSS && (
-            <>
-              <div className="toggle-row">
-                <div className="lab">Couple retiring together
-                  <small>Two same-age earners splitting household income — two benefit checks</small>
-                </div>
-                <Switch on={inputs.couple ?? false} onChange={v => set("couple", v)} />
-              </div>
-              <div style={{padding: "12px 0 4px"}}>
-                <SliderField label="Claim age" suffix="y"
-                  value={Math.round(window.FIMath.socialSecurity(inputs).claimAge)}
-                  onChange={v => set("socialSecurity", { ...(inputs.socialSecurity || {}), claimAge: v })}
-                  min={62} max={70} step={1}
-                  help="Claiming at 62 cuts the benefit ~30%; waiting until 70 adds ~24%" />
-              </div>
-            </>
+            <div style={{padding: "12px 0 4px"}}>
+              <SliderField label="Claim age" suffix="y"
+                value={Math.round(window.FIMath.socialSecurity(inputs).claimAge)}
+                onChange={v => set("socialSecurity", { ...(inputs.socialSecurity || {}), claimAge: v })}
+                min={62} max={70} step={1}
+                help="Claiming at 62 cuts the benefit ~30%; waiting until 70 adds ~24%" />
+            </div>
           )}
           <div className="toggle-row">
             <div className="lab">Account for taxes on withdrawal

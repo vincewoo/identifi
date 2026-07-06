@@ -31,7 +31,11 @@ const DEFAULT_INPUTS = {
   withdrawalRate: 4.0,
   realDollars: true,
   includeSS: false,
-  couple: false,         // household of two same-age partners retiring together
+  couple: false,         // household of two partners with independent ages/incomes
+  partner: {
+    age: null,           // null = same as currentAge
+    income: null,        // partner's share of annualIncome; null = 50/50 split
+  },
   socialSecurity: {
     claimAge: null,      // null = full retirement age, computed from currentAge
     monthly: null,       // null = estimated from income via SSA bend points

@@ -500,6 +500,63 @@
         expect(withdrawalIn(20)).toBeCloseTo(80_000, 0); // age 60: retired, no SS yet
         expect(withdrawalIn(30)).toBeCloseTo(44_000, 0); // age 70: SS covers 36K/yr
       });
+      it("staggered retirement: worker's income bridges the middle phase", () => {
+        const inputs = baseInputs({
+          currentAge: 40, currentNetWorth: 1_000_000, annualIncome: 120_000,
+          annualExpenses: 80_000, yearsToProject: 40,
+          retirementYear: 10, partnerRetirementYear: 20,
+          couple: true, partner: { age: 45, income: 60_000 },
+          healthcare: { enabled: false },
+        });
+        const mc = M.monteCarlo(inputs, { trials: 1, stdDev: 0, seed: 1 });
+        const p = mc.percentiles.p50;
+        const rr = 1 + M.realReturn(7, 3);
+        const flow = (y) => p[y] - p[y - 1] * rr; // + contribution / − withdrawal
+        expect(flow(5)).toBeCloseTo(40_000, 0);   // both work: 120K − 80K saved
+        expect(flow(15)).toBeCloseTo(-20_000, 0); // partner works: 60K − 80K gap
+        expect(flow(25)).toBeCloseTo(-80_000, 0); // both retired: full withdrawal
+      });
+      it("keeping one income longer raises success", () => {
+        const strained = baseInputs({
+          currentAge: 40, currentNetWorth: 300_000, annualIncome: 120_000,
+          annualExpenses: 70_000, yearsToProject: 45, retirementYear: 10,
+          couple: true, partner: { age: 40, income: 60_000 },
+        });
+        const together = M.monteCarlo({ ...strained, partnerRetirementYear: 10 }, { trials: 300, seed: 8 });
+        const staggered = M.monteCarlo({ ...strained, partnerRetirementYear: 20 }, { trials: 300, seed: 8 });
+        expect(staggered.successRate).toBeGreaterThan(together.successRate);
+      });
+      it("healthcare bridge steps down as each partner reaches Medicare", () => {
+        const inputs = baseInputs({
+          currentAge: 40, currentNetWorth: 3_000_000, annualExpenses: 80_000,
+          yearsToProject: 40, retirementYear: 10, partnerRetirementYear: 10,
+          couple: true, partner: { age: 50, income: 50_000 },
+          healthcare: { enabled: true, annualCost: 10_000, medicareAge: 65 },
+        });
+        const mc = M.monteCarlo(inputs, { trials: 1, stdDev: 0, seed: 1 });
+        const p = mc.percentiles.p50;
+        const rr = 1 + M.realReturn(7, 3);
+        const wd = (y) => p[y - 1] * rr - p[y];
+        expect(wd(12)).toBeCloseTo(90_000, 0); // ages 52/62: both pre-Medicare
+        expect(wd(20)).toBeCloseTo(85_000, 0); // ages 60/70: one on Medicare
+        expect(wd(30)).toBeCloseTo(80_000, 0); // ages 70/80: both on Medicare
+      });
+      it("each partner's SS starts at their own age, not together", () => {
+        const inputs = baseInputs({
+          currentAge: 40, currentNetWorth: 3_000_000, annualExpenses: 80_000,
+          yearsToProject: 40, retirementYear: 10, partnerRetirementYear: 10,
+          includeSS: true, couple: true, partner: { age: 50, income: 50_000 },
+          healthcare: { enabled: false },
+          socialSecurity: { claimAge: 67, monthly: 4_000 }, // 2K/mo each
+        });
+        const mc = M.monteCarlo(inputs, { trials: 1, stdDev: 0, seed: 1 });
+        const p = mc.percentiles.p50;
+        const rr = 1 + M.realReturn(7, 3);
+        const wd = (y) => p[y - 1] * rr - p[y];
+        expect(wd(15)).toBeCloseTo(80_000, 0); // ages 55/65: nobody claiming yet
+        expect(wd(20)).toBeCloseTo(56_000, 0); // ages 60/70: partner's 24K flows
+        expect(wd(30)).toBeCloseTo(32_000, 0); // ages 70/80: both claiming, 48K
+      });
       it("passive income surplus above expenses accrues to the portfolio", () => {
         const inputs = baseInputs({
           currentNetWorth: 0, annualIncome: 0, annualExpenses: 40_000, savingsRate: 0,
@@ -559,6 +616,23 @@
       it("monthly override is the household total, couple or not", () => {
         const ss = M.socialSecurity(baseInputs({ couple: true, socialSecurity: { monthly: 5_000 } }), { currentYear: 2026 });
         expect(ss.monthly).toBe(5_000);
+      });
+      it("one-earner couple: partner with no income adds no benefit", () => {
+        const single = M.socialSecurity(baseInputs({ targetAge: 67 }), { currentYear: 2026 });
+        const couple = M.socialSecurity(
+          baseInputs({ targetAge: 67, couple: true, partner: { income: 0 } }),
+          { currentYear: 2026 }
+        );
+        expect(couple.monthly).toBeCloseTo(single.monthly, 4);
+        expect(couple.people[1].monthly).toBe(0);
+      });
+      it("each partner's benefit reflects their own income share", () => {
+        const ss = M.socialSecurity(
+          baseInputs({ annualIncome: 150_000, targetAge: 67, couple: true, partner: { income: 50_000 } }),
+          { currentYear: 2026 }
+        );
+        // A earns 100K, B earns 50K → A's check must be bigger
+        expect(ss.people[0].monthly).toBeGreaterThan(ss.people[1].monthly);
       });
       it("couple SS raises Monte Carlo success over single", () => {
         const strained = baseInputs({

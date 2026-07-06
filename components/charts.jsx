@@ -89,7 +89,7 @@ function ProjectionChart({ series, height = 260, showFiLine = true, accent }) {
 }
 
 // Monte Carlo fan chart
-function MonteCarloChart({ result, height = 280, retirementYear }) {
+function MonteCarloChart({ result, height = 280, retirementYear, partnerRetirementYear }) {
   const W = 800, H = height, PAD_L = 8, PAD_R = 60, PAD_T = 16, PAD_B = 28;
   const { percentiles, paths } = result;
 
@@ -135,13 +135,22 @@ function MonteCarloChart({ result, height = 280, retirementYear }) {
         <path d={buildPath(percentiles.p50)} fill="none" stroke="var(--ink)" strokeWidth="1.75" />
       </g>
 
-      {/* retirement marker */}
+      {/* retirement markers */}
       {retirementYear != null && retirementYear < years && (
         <>
           <line x1={xs(retirementYear)} x2={xs(retirementYear)} y1={PAD_T} y2={H - PAD_B}
             stroke="var(--ink)" strokeWidth="0.75" strokeDasharray="3 3" />
           <text x={xs(retirementYear) + 6} y={PAD_T + 10} fill="var(--ink-2)" fontSize="10">
-            retire · y{retirementYear}
+            {partnerRetirementYear != null ? "you" : "retire"} · y{retirementYear}
+          </text>
+        </>
+      )}
+      {partnerRetirementYear != null && partnerRetirementYear < years && (
+        <>
+          <line x1={xs(partnerRetirementYear)} x2={xs(partnerRetirementYear)} y1={PAD_T} y2={H - PAD_B}
+            stroke="var(--ink-3)" strokeWidth="0.75" strokeDasharray="2 4" />
+          <text x={xs(partnerRetirementYear) + 6} y={PAD_T + 24} fill="var(--ink-3)" fontSize="10">
+            partner · y{partnerRetirementYear}
           </text>
         </>
       )}
