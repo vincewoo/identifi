@@ -145,7 +145,7 @@ function MonteCarloPage({ inputs }) {
               });
               return (
                 <div style={{fontSize: 12, color: "var(--ink-3)", fontFamily: "var(--font-mono)"}}>
-                  + Social Security {fmt(ss.annual)}/yr from age {Math.round(ss.claimAge)} — fixed income, immune to the dice
+                  + Social Security {fmt(ss.annual)}/yr{ss.couple ? " (two earners)" : ""} from age {Math.round(ss.claimAge)} — fixed income, immune to the dice
                 </div>
               );
             })()}

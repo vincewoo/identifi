@@ -303,20 +303,28 @@ function SettingsPage({ inputs, setInputs }) {
               <small>
                 {(() => {
                   const ss = window.FIMath.socialSecurity(inputs);
-                  return `≈ ${window.FIMath.fmtMoneyFull(ss.monthly)}/mo from age ${Math.round(ss.claimAge)}, estimated from your income and retirement age`;
+                  return `≈ ${window.FIMath.fmtMoneyFull(ss.monthly)}/mo${ss.couple ? " combined" : ""} from age ${Math.round(ss.claimAge)}, estimated from your income and retirement age`;
                 })()}
               </small>
             </div>
             <Switch on={inputs.includeSS} onChange={v => set("includeSS", v)} />
           </div>
           {inputs.includeSS && (
-            <div style={{padding: "12px 0 4px"}}>
-              <SliderField label="Claim age" suffix="y"
-                value={Math.round(window.FIMath.socialSecurity(inputs).claimAge)}
-                onChange={v => set("socialSecurity", { ...(inputs.socialSecurity || {}), claimAge: v })}
-                min={62} max={70} step={1}
-                help="Claiming at 62 cuts the benefit ~30%; waiting until 70 adds ~24%" />
-            </div>
+            <>
+              <div className="toggle-row">
+                <div className="lab">Couple retiring together
+                  <small>Two same-age earners splitting household income — two benefit checks</small>
+                </div>
+                <Switch on={inputs.couple ?? false} onChange={v => set("couple", v)} />
+              </div>
+              <div style={{padding: "12px 0 4px"}}>
+                <SliderField label="Claim age" suffix="y"
+                  value={Math.round(window.FIMath.socialSecurity(inputs).claimAge)}
+                  onChange={v => set("socialSecurity", { ...(inputs.socialSecurity || {}), claimAge: v })}
+                  min={62} max={70} step={1}
+                  help="Claiming at 62 cuts the benefit ~30%; waiting until 70 adds ~24%" />
+              </div>
+            </>
           )}
           <div className="toggle-row">
             <div className="lab">Account for taxes on withdrawal

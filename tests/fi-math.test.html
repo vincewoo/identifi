@@ -543,6 +543,32 @@
         expect(M.socialSecurity(baseInputs()).enabled).toBeFalsy();
         expect(M.socialSecurity(baseInputs({ includeSS: true })).enabled).toBeTruthy();
       });
+      it("a couple gets more than one earner but less than double", () => {
+        const single = M.socialSecurity(baseInputs({ targetAge: 67 }), { currentYear: 2026 });
+        const couple = M.socialSecurity(baseInputs({ targetAge: 67, couple: true }), { currentYear: 2026 });
+        // Progressive bend points: 2 × benefit(income/2) > benefit(income),
+        // but each half-income check is smaller than a full-income check
+        expect(couple.monthly).toBeGreaterThan(single.monthly);
+        expect(couple.monthly).toBeLessThan(2 * single.monthly);
+      });
+      it("couple benefit is exactly double when both halves exceed the wage cap", () => {
+        const single = M.socialSecurity(baseInputs({ annualIncome: 400_000, targetAge: 67 }), { currentYear: 2026 });
+        const couple = M.socialSecurity(baseInputs({ annualIncome: 400_000, targetAge: 67, couple: true }), { currentYear: 2026 });
+        expect(couple.monthly).toBeCloseTo(2 * single.monthly, 4);
+      });
+      it("monthly override is the household total, couple or not", () => {
+        const ss = M.socialSecurity(baseInputs({ couple: true, socialSecurity: { monthly: 5_000 } }), { currentYear: 2026 });
+        expect(ss.monthly).toBe(5_000);
+      });
+      it("couple SS raises Monte Carlo success over single", () => {
+        const strained = baseInputs({
+          currentAge: 40, currentNetWorth: 400_000, annualIncome: 100_000,
+          annualExpenses: 80_000, yearsToProject: 45, retirementYear: 15, includeSS: true,
+        });
+        const single = M.monteCarlo(strained, { trials: 300, seed: 8 });
+        const couple = M.monteCarlo({ ...strained, couple: true }, { trials: 300, seed: 8 });
+        expect(couple.successRate).toBeGreaterThan(single.successRate);
+      });
     });
 
     describe("fmtMoney", () => {
