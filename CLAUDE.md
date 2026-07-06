@@ -31,6 +31,8 @@ All exposed as `window.FIMath`. Key functions:
 - `baristaFI(inputs, partTimeIncome)` — portfolio needed when part-time income covers the gap
 - `monteCarlo(inputs, opts)` — 500-trial lognormal-return simulation (median tracks `project()`), returns `{paths, percentiles, successRate}`; `opts.seed` gives a reproducible run
 - `healthcareBridge(inputs)` — pre-Medicare bridge fund: `years × annualCost`
+- `socialSecurity(inputs, opts)` — per-person estimated benefit + claim age derived from each partner's age/income share/retirement age (SSA bend points, FRA, actuarial adjustment); active in `monteCarlo` when `inputs.includeSS` is true, as market-independent income starting at each person's own claim age
+- `inputs.couple` + `inputs.partner {age, income}` — two-earner household; `monteCarlo` models three phases (both working → one working → both retired) with per-person retirement years (`retirementYear`, `partnerRetirementYear`), Medicare transitions, and SS streams
 - `fmtMoney(n)` / `fmtMoneyFull(n)` / `fmtPct(n)` — formatting helpers
 
 The FI number is `annualExpenses × (100 / withdrawalRate) + healthcareBridge.total`.

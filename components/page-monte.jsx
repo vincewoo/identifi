@@ -5,18 +5,22 @@ function MonteCarloPage({ inputs }) {
   const [trials, setTrials] = useStateMC(500);
   const [stdDev, setStdDev] = useStateMC(15);
   const [retYear, setRetYear] = useStateMC(20);
+  const [partnerRetYear, setPartnerRetYear] = useStateMC(20);
   const [seed, setSeed] = useStateMC(1);
 
-  // Always simulate at least 25 drawdown years past retirement, so success
-  // can't be trivially 100% just because the horizon ends before withdrawals.
-  const horizon = Math.max(50, retYear + 25);
+  const couple = inputs.couple === true;
+  const effPartnerRetYear = couple ? partnerRetYear : retYear;
+
+  // Always simulate at least 25 drawdown years past the last retirement, so
+  // success can't be trivially 100% because the horizon ends before withdrawals.
+  const horizon = Math.max(50, Math.max(retYear, effPartnerRetYear) + 25);
 
   const result = useMemoMC(() =>
     window.FIMath.monteCarlo(
-      { ...inputs, retirementYear: retYear, yearsToProject: horizon },
+      { ...inputs, retirementYear: retYear, partnerRetirementYear: effPartnerRetYear, yearsToProject: horizon },
       { trials, stdDev, seed }
     ),
-    [inputs, trials, stdDev, retYear, seed, horizon]
+    [inputs, trials, stdDev, retYear, effPartnerRetYear, seed, horizon]
   );
 
   const exportRuns = () => {
@@ -70,7 +74,8 @@ function MonteCarloPage({ inputs }) {
             <h3>Portfolio · accumulation → drawdown</h3>
             <span className="chip dot">{trials} trials · σ {stdDev}%</span>
           </div>
-          <MonteCarloChart result={result} retirementYear={retYear} />
+          <MonteCarloChart result={result} retirementYear={retYear}
+            partnerRetirementYear={couple && partnerRetYear !== retYear ? partnerRetYear : null} />
           <div style={{display: "flex", gap: 18, marginTop: 16, fontSize: 12, color: "var(--ink-3)", fontFamily: "var(--font-mono)", flexWrap: "wrap"}}>
             <span style={{display: "flex", alignItems: "center", gap: 6}}>
               <span style={{width: 14, height: 2, background: "var(--ink)"}}></span> Median (p50)
@@ -136,9 +141,28 @@ function MonteCarloPage({ inputs }) {
             <SliderField label="Volatility (σ)" value={stdDev} onChange={setStdDev}
               suffix="%" min={5} max={30} step={1}
               help="Stocks ≈ 15-18%. Bonds ≈ 5-8%. Crypto ≈ pray." />
-            <SliderField label="Retirement year" value={retYear} onChange={setRetYear}
+            <SliderField label={couple ? "Your retirement year" : "Retirement year"}
+              value={retYear} onChange={setRetYear}
               suffix="y" min={5} max={50} step={1}
-              help="When contributions stop and withdrawals start" />
+              help={couple ? "When your income stops" : "When contributions stop and withdrawals start"} />
+            {couple && (
+              <SliderField label="Partner retirement year" value={partnerRetYear}
+                onChange={setPartnerRetYear} suffix="y" min={5} max={50} step={1}
+                help="Their income keeps covering expenses until then" />
+            )}
+            {inputs.includeSS && (() => {
+              const ss = window.FIMath.socialSecurity(inputs, {
+                retireAge: (inputs.currentAge ?? 0) + retYear,
+                partnerRetireAge: couple
+                  ? (inputs.partner?.age ?? inputs.currentAge ?? 0) + partnerRetYear
+                  : undefined,
+              });
+              return (
+                <div style={{fontSize: 12, color: "var(--ink-3)", fontFamily: "var(--font-mono)"}}>
+                  + Social Security {fmt(ss.annual)}/yr{ss.couple ? " (two earners)" : ""} from age {Math.round(ss.claimAge)} — fixed income, immune to the dice
+                </div>
+              );
+            })()}
           </div>
         </div>
 
